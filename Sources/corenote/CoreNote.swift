@@ -6,6 +6,6 @@ struct CoreNote: ParsableCommand {
         commandName: "corenote",
         abstract: "CLI frontend to Apple Notes",
         version: "0.1.0",
-        subcommands: []
+        subcommands: [ListCommand.self, ShowCommand.self, SearchCommand.self]
     )
 }
