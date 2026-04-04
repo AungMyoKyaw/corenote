@@ -201,3 +201,84 @@ final class NoteStoreDB: @unchecked Sendable {
         )
     }
 }
+
+// MARK: - Write operations
+extension NoteStoreDB {
+    func createNote(title: String, bodyData: Data, folderPK: Int64?) throws -> Int64 {
+        let now = Note.macFromDate(Date())
+        let uuid = UUID().uuidString
+        try db.execute("""
+            INSERT INTO ZICCLOUDSYNCINGOBJECT (Z_ENT, ZTITLE1, ZIDENTIFIER,
+                ZCREATIONDATE1, ZMODIFICATIONDATE1, ZFOLDER, ZMARKEDFORDELETION, ZISINTRASHEDBYUSER)
+            VALUES (?, ?, ?, ?, ?, ?, 0, 0)
+        """, params: [.int(schema.noteEnt), .text(title), .text(uuid), .double(now), .double(now),
+            folderPK.map { .int($0) } ?? .null])
+        let noteRows = try db.query("SELECT last_insert_rowid() as pk")
+        guard let notePK = noteRows.first?["pk"] as? Int64 else { throw NoteStoreError.noteNotFound(query: title) }
+        try db.execute("INSERT INTO ZICNOTEDATA (ZNOTE, ZDATA) VALUES (?, ?)",
+            params: [.int(notePK), .blob(bodyData)])
+        let dataRows = try db.query("SELECT last_insert_rowid() as pk")
+        guard let dataPK = dataRows.first?["pk"] as? Int64 else { throw NoteStoreError.noteNotFound(query: title) }
+        try db.execute("UPDATE ZICCLOUDSYNCINGOBJECT SET ZNOTEDATA = ? WHERE Z_PK = ?",
+            params: [.int(dataPK), .int(notePK)])
+        return notePK
+    }
+
+    func updateNoteBody(notePK: Int64, bodyData: Data, title: String? = nil) throws {
+        let now = Note.macFromDate(Date())
+        try db.execute("UPDATE ZICNOTEDATA SET ZDATA = ? WHERE Z_PK = (SELECT ZNOTEDATA FROM ZICCLOUDSYNCINGOBJECT WHERE Z_PK = ?)",
+            params: [.blob(bodyData), .int(notePK)])
+        if let title = title {
+            try db.execute("UPDATE ZICCLOUDSYNCINGOBJECT SET ZMODIFICATIONDATE1 = ?, ZTITLE1 = ? WHERE Z_PK = ?",
+                params: [.double(now), .text(title), .int(notePK)])
+        } else {
+            try db.execute("UPDATE ZICCLOUDSYNCINGOBJECT SET ZMODIFICATIONDATE1 = ? WHERE Z_PK = ?",
+                params: [.double(now), .int(notePK)])
+        }
+    }
+
+    func trashNote(notePK: Int64) throws {
+        let now = Note.macFromDate(Date())
+        try db.execute("UPDATE ZICCLOUDSYNCINGOBJECT SET ZISINTRASHEDBYUSER = 1, ZMODIFICATIONDATE1 = ? WHERE Z_PK = ?",
+            params: [.double(now), .int(notePK)])
+    }
+
+    func permanentlyDeleteNote(notePK: Int64) throws {
+        try db.execute("DELETE FROM ZICNOTEDATA WHERE Z_PK = (SELECT ZNOTEDATA FROM ZICCLOUDSYNCINGOBJECT WHERE Z_PK = ?)",
+            params: [.int(notePK)])
+        try db.execute("DELETE FROM ZICCLOUDSYNCINGOBJECT WHERE Z_PK = ?", params: [.int(notePK)])
+    }
+
+    func moveNote(notePK: Int64, toFolderPK: Int64) throws {
+        let now = Note.macFromDate(Date())
+        try db.execute("UPDATE ZICCLOUDSYNCINGOBJECT SET ZFOLDER = ?, ZMODIFICATIONDATE1 = ? WHERE Z_PK = ?",
+            params: [.int(toFolderPK), .double(now), .int(notePK)])
+    }
+
+    func createFolder(name: String, parentPK: Int64?, accountPK: Int64?) throws -> Int64 {
+        let uuid = UUID().uuidString
+        try db.execute("""
+            INSERT INTO ZICCLOUDSYNCINGOBJECT (Z_ENT, ZTITLE2, ZIDENTIFIER, ZPARENT, ZACCOUNT3)
+            VALUES (?, ?, ?, ?, ?)
+        """, params: [.int(schema.folderEnt), .text(name), .text(uuid),
+            parentPK.map { .int($0) } ?? .null, accountPK.map { .int($0) } ?? .null])
+        let rows = try db.query("SELECT last_insert_rowid() as pk")
+        return rows.first?["pk"] as? Int64 ?? 0
+    }
+
+    func renameFolder(folderPK: Int64, newName: String) throws {
+        try db.execute("UPDATE ZICCLOUDSYNCINGOBJECT SET ZTITLE2 = ? WHERE Z_PK = ? AND Z_ENT = ?",
+            params: [.text(newName), .int(folderPK), .int(schema.folderEnt)])
+    }
+
+    func deleteFolder(folderPK: Int64) throws {
+        try db.execute("DELETE FROM ZICCLOUDSYNCINGOBJECT WHERE Z_PK = ? AND Z_ENT = ?",
+            params: [.int(folderPK), .int(schema.folderEnt)])
+    }
+
+    func getDefaultAccountPK() throws -> Int64? {
+        let rows = try db.query("SELECT Z_PK FROM ZICCLOUDSYNCINGOBJECT WHERE Z_ENT = ? LIMIT 1",
+            params: [.int(schema.accountEnt)])
+        return rows.first?["Z_PK"] as? Int64
+    }
+}
