@@ -1,0 +1,52 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Xcode user data
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad
+*.xccheckout
+*.xcscmblueprint
+
+# Xcode build
+build/
+DerivedData/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/Build/
+Carthage/Checkouts/
+
+# Sensitive files
+.env
+.env.*
+*.pem
+*.p12
+*.key
+*.cer
+*.mobileprovision
+*.provisionprofile
+credentials.*
+secrets.*
+api_keys.*
+Secrets.plist
+**/GoogleService-Info.plist
+
+# Keychain
+*.keychain
+*.keychain-db
