@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Build universal binary
+        run: |
+          # Build for arm64
+          swift build -c release --arch arm64 --disable-sandbox
+          mkdir -p .build/bin
+          cp .build/arm64-apple-macosx/release/corenote .build/bin/corenote-arm64
+
+          # Build for x86_64
+          swift build -c release --arch x86_64 --disable-sandbox
+          cp .build/x86_64-apple-macosx/release/corenote .build/bin/corenote-x86_64
+
+          # Combine into universal binary
+          lipo -create .build/bin/corenote-arm64 .build/bin/corenote-x86_64 -output ./corenote
+
+          # Verify the universal binary
+          file ./corenote
+          lipo -info ./corenote
+
+      - name: Ad-hoc sign binary
+        run: |
+          codesign -s - ./corenote
+          codesign -v ./corenote
+
+      - name: Verify binary
+        run: |
+          if ! ./corenote --version; then
+            echo "Binary test failed"
+            exit 1
+          fi
+
+      - name: Create zip archive
+        run: |
+          ARCHIVE_NAME="corenote-${{ steps.get_version.outputs.VERSION }}.zip"
+          zip -j "$ARCHIVE_NAME" corenote
+          echo "ARCHIVE_NAME=$ARCHIVE_NAME" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "Release ${{ steps.get_version.outputs.VERSION }}" \
+            --generate-notes \
+            "$ARCHIVE_NAME"
