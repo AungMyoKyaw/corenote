@@ -14,9 +14,9 @@ Expand `SchemaMapper` to detect all column availability at init time via `PRAGMA
 
 These are fundamental to CoreData and Apple Notes' schema:
 
-**ZICCLOUDSYNCINGOBJECT**: `Z_PK`, `Z_ENT`, `ZTITLE1`, `ZIDENTIFIER`, `ZFOLDER`, `ZNOTEDATA`, `ZCREATIONDATE1`, `ZMODIFICATIONDATE1`
+**ZICCLOUDSYNCINGOBJECT**: `Z_PK`, `Z_ENT`, `ZTITLE1`, `ZTITLE2`, `ZIDENTIFIER`, `ZFOLDER`, `ZNOTEDATA`, `ZCREATIONDATE1`, `ZMODIFICATIONDATE1`
 
-**ZICNOTEDATA**: `Z_PK`, `ZDATA`
+**ZICNOTEDATA**: `Z_PK`, `ZDATA`, `ZNOTE`
 
 **Z_PRIMARYKEY**: `Z_ENT`, `Z_NAME`
 
@@ -32,9 +32,7 @@ These are fundamental to CoreData and Apple Notes' schema:
 | `ZACCOUNT2` | ZICCLOUDSYNCINGOBJECT | Omit account JOIN for notes, empty account name |
 | `ZACCOUNT3` | ZICCLOUDSYNCINGOBJECT | Omit account JOIN for folders, empty account name |
 | `ZPARENT` | ZICCLOUDSYNCINGOBJECT | Flat folder list, no nesting |
-| `ZTITLE2` | ZICCLOUDSYNCINGOBJECT | Try `ZTITLE` as fallback |
 | `ZNAME` | ZICCLOUDSYNCINGOBJECT | Empty account name |
-| `ZNOTE` | ZICNOTEDATA | Fail on create (read-only mode) |
 
 ## Architecture Changes
 

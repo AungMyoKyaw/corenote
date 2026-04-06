@@ -24,12 +24,12 @@ struct SchemaMapper: Sendable {
     private let noteDataColumns: Set<String>
 
     static let requiredMainColumns: Set<String> = [
-        "Z_PK", "Z_ENT", "ZTITLE1", "ZIDENTIFIER",
+        "Z_PK", "Z_ENT", "ZTITLE1", "ZTITLE2", "ZIDENTIFIER",
         "ZFOLDER", "ZNOTEDATA", "ZCREATIONDATE1", "ZMODIFICATIONDATE1"
     ]
 
     static let requiredNoteDataColumns: Set<String> = [
-        "Z_PK", "ZDATA"
+        "Z_PK", "ZDATA", "ZNOTE"
     ]
 
     func has(_ column: String) -> Bool {
