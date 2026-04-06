@@ -15,6 +15,17 @@ final class SchemaMapperTests: XCTestCase {
         try db.execute("INSERT INTO Z_PRIMARYKEY (Z_ENT, Z_NAME) VALUES (6, 'ICAccount')")
         try db.execute("INSERT INTO Z_PRIMARYKEY (Z_ENT, Z_NAME) VALUES (9, 'ICFolder')")
         try db.execute("INSERT INTO Z_PRIMARYKEY (Z_ENT, Z_NAME) VALUES (14, 'ICNote')")
+
+        try db.execute("""
+            CREATE TABLE ZICCLOUDSYNCINGOBJECT (
+                Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER,
+                ZTITLE1 TEXT, ZTITLE2 TEXT, ZIDENTIFIER TEXT,
+                ZCREATIONDATE1 REAL, ZMODIFICATIONDATE1 REAL,
+                ZFOLDER INTEGER, ZNOTEDATA INTEGER
+            )
+        """)
+        try db.execute("CREATE TABLE ZICNOTEDATA (Z_PK INTEGER PRIMARY KEY, ZDATA BLOB, ZNOTE INTEGER)")
+
         return db
     }
 

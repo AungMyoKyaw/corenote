@@ -34,19 +34,81 @@ final class NoteStoreDB: @unchecked Sendable {
         self.schema = try SchemaMapper(db: db)
     }
 
+    init(db: SQLiteConnection, schema: SchemaMapper) {
+        self.db = db
+        self.schema = schema
+    }
+
+    // MARK: - Query Helpers
+
+    private func optionalCol(_ alias: String, _ column: String, fallback: String? = nil) -> String {
+        if schema.has(column) {
+            return ", \(alias).\(column)"
+        } else if let fb = fallback {
+            return ", \(fb) as \(column)"
+        }
+        return ""
+    }
+
+    private func deletionFilter(_ alias: String) -> String {
+        if schema.has("ZMARKEDFORDELETION") {
+            return "AND (\(alias).ZMARKEDFORDELETION != 1 OR \(alias).ZMARKEDFORDELETION IS NULL)"
+        }
+        return ""
+    }
+
+    private func trashFilter(_ alias: String) -> String {
+        if let col = schema.trashColumn {
+            return "AND (\(alias).\(col) != 1 OR \(alias).\(col) IS NULL)"
+        }
+        if schema.has("ZFOLDERTYPE") {
+            return "AND (\(alias).ZFOLDER IS NULL OR (SELECT ZFOLDERTYPE FROM ZICCLOUDSYNCINGOBJECT WHERE Z_PK = \(alias).ZFOLDER) != 1)"
+        }
+        return ""
+    }
+
+    private func accountJoin(noteAlias: String) -> String {
+        if schema.has("ZACCOUNT2") && schema.has("ZNAME") {
+            return "LEFT JOIN ZICCLOUDSYNCINGOBJECT a ON a.Z_PK = \(noteAlias).ZACCOUNT2"
+        }
+        return ""
+    }
+
+    private func accountSelect() -> String {
+        if schema.has("ZACCOUNT2") && schema.has("ZNAME") {
+            return ", a.ZNAME as account_name"
+        }
+        return ""
+    }
+
+    private func folderAccountJoin(folderAlias: String) -> String {
+        if schema.has("ZACCOUNT3") && schema.has("ZNAME") {
+            return "LEFT JOIN ZICCLOUDSYNCINGOBJECT a ON a.Z_PK = \(folderAlias).ZACCOUNT3"
+        }
+        return ""
+    }
+
+    private func folderAccountSelect() -> String {
+        if schema.has("ZACCOUNT3") && schema.has("ZNAME") {
+            return ", a.ZNAME as account_name"
+        }
+        return ""
+    }
+
+    // MARK: - Read Operations
+
     func listNotes(folder: String? = nil, account: String? = nil,
                    limit: Int = 50, sort: String = "modified") throws -> [Note] {
         var sql = """
-            SELECT c.Z_PK, c.ZTITLE1, c.ZSNIPPET, c.ZIDENTIFIER,
-                   c.ZCREATIONDATE1, c.ZMODIFICATIONDATE1,
-                   c.ZISINTRASHEDBYUSER, c.ZISPASSWORDPROTECTED,
-                   f.ZTITLE2 as folder_name, a.ZNAME as account_name
+            SELECT c.Z_PK, c.ZTITLE1, c.ZIDENTIFIER,
+                   c.ZCREATIONDATE1, c.ZMODIFICATIONDATE1\(optionalCol("c", "ZSNIPPET"))\(optionalCol("c", "ZISPASSWORDPROTECTED")),
+                   f.ZTITLE2 as folder_name\(accountSelect())
             FROM ZICCLOUDSYNCINGOBJECT c
             LEFT JOIN ZICCLOUDSYNCINGOBJECT f ON f.Z_PK = c.ZFOLDER
-            LEFT JOIN ZICCLOUDSYNCINGOBJECT a ON a.Z_PK = c.ZACCOUNT2
+            \(accountJoin(noteAlias: "c"))
             WHERE c.Z_ENT = ?
-              AND (c.ZMARKEDFORDELETION != 1 OR c.ZMARKEDFORDELETION IS NULL)
-              AND (c.ZISINTRASHEDBYUSER != 1 OR c.ZISINTRASHEDBYUSER IS NULL)
+              \(deletionFilter("c"))
+              \(trashFilter("c"))
         """
         var params: [SQLiteParam] = [.int(schema.noteEnt)]
 
@@ -54,7 +116,7 @@ final class NoteStoreDB: @unchecked Sendable {
             sql += " AND f.ZTITLE2 = ?"
             params.append(.text(folder))
         }
-        if let account = account {
+        if let account = account, schema.has("ZNAME") {
             sql += " AND a.ZNAME = ?"
             params.append(.text(account))
         }
@@ -81,22 +143,27 @@ final class NoteStoreDB: @unchecked Sendable {
     }
 
     func searchNotes(text: String, folder: String? = nil, limit: Int = 50) throws -> [Note] {
+        let hasSnippet = schema.has("ZSNIPPET")
+        let snippetMatch = hasSnippet ? " OR c.ZSNIPPET LIKE ?" : ""
+
         var sql = """
-            SELECT c.Z_PK, c.ZTITLE1, c.ZSNIPPET, c.ZIDENTIFIER,
-                   c.ZCREATIONDATE1, c.ZMODIFICATIONDATE1,
-                   c.ZISINTRASHEDBYUSER, c.ZISPASSWORDPROTECTED,
-                   f.ZTITLE2 as folder_name, a.ZNAME as account_name
+            SELECT c.Z_PK, c.ZTITLE1, c.ZIDENTIFIER,
+                   c.ZCREATIONDATE1, c.ZMODIFICATIONDATE1\(optionalCol("c", "ZSNIPPET"))\(optionalCol("c", "ZISPASSWORDPROTECTED")),
+                   f.ZTITLE2 as folder_name\(accountSelect())
             FROM ZICCLOUDSYNCINGOBJECT c
             LEFT JOIN ZICCLOUDSYNCINGOBJECT f ON f.Z_PK = c.ZFOLDER
-            LEFT JOIN ZICCLOUDSYNCINGOBJECT a ON a.Z_PK = c.ZACCOUNT2
+            \(accountJoin(noteAlias: "c"))
             LEFT JOIN ZICNOTEDATA n ON c.ZNOTEDATA = n.Z_PK
             WHERE c.Z_ENT = ?
-              AND (c.ZMARKEDFORDELETION != 1 OR c.ZMARKEDFORDELETION IS NULL)
-              AND (c.ZISINTRASHEDBYUSER != 1 OR c.ZISINTRASHEDBYUSER IS NULL)
-              AND (c.ZTITLE1 LIKE ? OR c.ZSNIPPET LIKE ?)
+              \(deletionFilter("c"))
+              \(trashFilter("c"))
+              AND (c.ZTITLE1 LIKE ?\(snippetMatch))
         """
         let pattern = "%\(text)%"
-        var params: [SQLiteParam] = [.int(schema.noteEnt), .text(pattern), .text(pattern)]
+        var params: [SQLiteParam] = [.int(schema.noteEnt), .text(pattern)]
+        if hasSnippet {
+            params.append(.text(pattern))
+        }
 
         if let folder = folder {
             sql += " AND f.ZTITLE2 = ?"
@@ -111,21 +178,23 @@ final class NoteStoreDB: @unchecked Sendable {
     }
 
     func listFolders(account: String? = nil) throws -> [Folder] {
+        let hasParent = schema.has("ZPARENT")
+        let parentSelect = hasParent ? ", f.ZPARENT" : ""
+
         var sql = """
-            SELECT f.Z_PK, f.ZTITLE2, f.ZIDENTIFIER, f.ZPARENT,
-                   a.ZNAME as account_name,
+            SELECT f.Z_PK, f.ZTITLE2, f.ZIDENTIFIER\(parentSelect)\(folderAccountSelect()),
                    (SELECT COUNT(*) FROM ZICCLOUDSYNCINGOBJECT n
                     WHERE n.ZFOLDER = f.Z_PK AND n.Z_ENT = ?
-                    AND (n.ZMARKEDFORDELETION != 1 OR n.ZMARKEDFORDELETION IS NULL)
-                    AND (n.ZISINTRASHEDBYUSER != 1 OR n.ZISINTRASHEDBYUSER IS NULL)
+                    \(deletionFilter("n"))
+                    \(trashFilter("n"))
                    ) as note_count
             FROM ZICCLOUDSYNCINGOBJECT f
-            LEFT JOIN ZICCLOUDSYNCINGOBJECT a ON a.Z_PK = f.ZACCOUNT3
+            \(folderAccountJoin(folderAlias: "f"))
             WHERE f.Z_ENT = ?
         """
         var params: [SQLiteParam] = [.int(schema.noteEnt), .int(schema.folderEnt)]
 
-        if let account = account {
+        if let account = account, schema.has("ZNAME") {
             sql += " AND a.ZNAME = ?"
             params.append(.text(account))
         }
@@ -175,7 +244,12 @@ final class NoteStoreDB: @unchecked Sendable {
         let accountName = row["account_name"] as? String ?? ""
         let createdMac = row["ZCREATIONDATE1"] as? Double ?? 0
         let modifiedMac = row["ZMODIFICATIONDATE1"] as? Double ?? 0
-        let isTrashed = (row["ZISINTRASHEDBYUSER"] as? Int64 ?? 0) == 1
+        let isTrashed: Bool
+        if let col = schema.trashColumn, let val = row[col] as? Int64 {
+            isTrashed = val == 1
+        } else {
+            isTrashed = folderName == "Recently Deleted"
+        }
         let isProtected = (row["ZISPASSWORDPROTECTED"] as? Int64 ?? 0) == 1
 
         return Note(
@@ -207,18 +281,35 @@ extension NoteStoreDB {
     func createNote(title: String, bodyData: Data, folderPK: Int64?) throws -> Int64 {
         let now = Note.macFromDate(Date())
         let uuid = UUID().uuidString
-        try db.execute("""
-            INSERT INTO ZICCLOUDSYNCINGOBJECT (Z_ENT, ZTITLE1, ZIDENTIFIER,
-                ZCREATIONDATE1, ZMODIFICATIONDATE1, ZFOLDER, ZMARKEDFORDELETION, ZISINTRASHEDBYUSER)
-            VALUES (?, ?, ?, ?, ?, ?, 0, 0)
-        """, params: [.int(schema.noteEnt), .text(title), .text(uuid), .double(now), .double(now),
-            folderPK.map { .int($0) } ?? .null])
+
+        var cols = "Z_ENT, ZTITLE1, ZIDENTIFIER, ZCREATIONDATE1, ZMODIFICATIONDATE1, ZFOLDER"
+        var placeholders = "?, ?, ?, ?, ?, ?"
+        var params: [SQLiteParam] = [
+            .int(schema.noteEnt), .text(title), .text(uuid),
+            .double(now), .double(now), folderPK.map { .int($0) } ?? .null
+        ]
+
+        if schema.has("ZMARKEDFORDELETION") {
+            cols += ", ZMARKEDFORDELETION"
+            placeholders += ", 0"
+        }
+        if let trashCol = schema.trashColumn {
+            cols += ", \(trashCol)"
+            placeholders += ", 0"
+        }
+
+        try db.execute(
+            "INSERT INTO ZICCLOUDSYNCINGOBJECT (\(cols)) VALUES (\(placeholders))",
+            params: params
+        )
         let noteRows = try db.query("SELECT last_insert_rowid() as pk")
         guard let notePK = noteRows.first?["pk"] as? Int64 else { throw NoteStoreError.noteNotFound(query: title) }
+
         try db.execute("INSERT INTO ZICNOTEDATA (ZNOTE, ZDATA) VALUES (?, ?)",
             params: [.int(notePK), .blob(bodyData)])
         let dataRows = try db.query("SELECT last_insert_rowid() as pk")
         guard let dataPK = dataRows.first?["pk"] as? Int64 else { throw NoteStoreError.noteNotFound(query: title) }
+
         try db.execute("UPDATE ZICCLOUDSYNCINGOBJECT SET ZNOTEDATA = ? WHERE Z_PK = ?",
             params: [.int(dataPK), .int(notePK)])
         return notePK
@@ -239,8 +330,13 @@ extension NoteStoreDB {
 
     func trashNote(notePK: Int64) throws {
         let now = Note.macFromDate(Date())
-        try db.execute("UPDATE ZICCLOUDSYNCINGOBJECT SET ZISINTRASHEDBYUSER = 1, ZMODIFICATIONDATE1 = ? WHERE Z_PK = ?",
-            params: [.double(now), .int(notePK)])
+        if let col = schema.trashColumn {
+            try db.execute("UPDATE ZICCLOUDSYNCINGOBJECT SET \(col) = 1, ZMODIFICATIONDATE1 = ? WHERE Z_PK = ?",
+                params: [.double(now), .int(notePK)])
+        } else if schema.has("ZMARKEDFORDELETION") {
+            try db.execute("UPDATE ZICCLOUDSYNCINGOBJECT SET ZMARKEDFORDELETION = 1, ZMODIFICATIONDATE1 = ? WHERE Z_PK = ?",
+                params: [.double(now), .int(notePK)])
+        }
     }
 
     func permanentlyDeleteNote(notePK: Int64) throws {
@@ -257,11 +353,26 @@ extension NoteStoreDB {
 
     func createFolder(name: String, parentPK: Int64?, accountPK: Int64?) throws -> Int64 {
         let uuid = UUID().uuidString
-        try db.execute("""
-            INSERT INTO ZICCLOUDSYNCINGOBJECT (Z_ENT, ZTITLE2, ZIDENTIFIER, ZPARENT, ZACCOUNT3)
-            VALUES (?, ?, ?, ?, ?)
-        """, params: [.int(schema.folderEnt), .text(name), .text(uuid),
-            parentPK.map { .int($0) } ?? .null, accountPK.map { .int($0) } ?? .null])
+
+        var cols = "Z_ENT, ZTITLE2, ZIDENTIFIER"
+        var placeholders = "?, ?, ?"
+        var params: [SQLiteParam] = [.int(schema.folderEnt), .text(name), .text(uuid)]
+
+        if schema.has("ZPARENT") {
+            cols += ", ZPARENT"
+            placeholders += ", ?"
+            params.append(parentPK.map { .int($0) } ?? .null)
+        }
+        if schema.has("ZACCOUNT3") {
+            cols += ", ZACCOUNT3"
+            placeholders += ", ?"
+            params.append(accountPK.map { .int($0) } ?? .null)
+        }
+
+        try db.execute(
+            "INSERT INTO ZICCLOUDSYNCINGOBJECT (\(cols)) VALUES (\(placeholders))",
+            params: params
+        )
         let rows = try db.query("SELECT last_insert_rowid() as pk")
         return rows.first?["pk"] as? Int64 ?? 0
     }
