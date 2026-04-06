@@ -4,311 +4,670 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>corenote — CLI frontend to Apple Notes</title>
-  <meta name="description" content="Read, create, edit, search, and organize your Apple Notes directly from the terminal.">
+  <meta name="description" content="Read, create, edit, search, and organize your Apple Notes directly from the terminal. Fast, native, no sync required.">
+  <meta name="theme-color" content="#1a1614">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0d1117;
-      --bg-card: #161b22;
-      --bg-code: #1c2128;
-      --border: #30363d;
-      --text: #e6edf3;
-      --text-dim: #8b949e;
-      --green: #3fb950;
-      --green-dim: #238636;
-      --yellow: #e3b341;
-      --blue: #58a6ff;
-      --purple: #bc8cff;
-      --cyan: #39d2c0;
-      --red: #f85149;
-      --orange: #f0883e;
+      --bg:        #110f0d;
+      --bg-warm:   #1a1614;
+      --bg-card:   #1f1b18;
+      --bg-code:   #161210;
+      --border:    #2e2723;
+      --border-lt: #3d3530;
+      --text:      #ede8e3;
+      --text-mid:  #b5a99e;
+      --text-dim:  #7a6f66;
+      --amber:     #e8a849;
+      --amber-dim: #b07d2e;
+      --gold:      #d4a54a;
+      --green:     #7ec77b;
+      --cyan:      #6ec8c8;
+      --rose:      #d47b7b;
+      --blue:      #7ba8d4;
+      --font-display: 'DM Serif Display', Georgia, serif;
+      --font-body:    'DM Sans', system-ui, sans-serif;
+      --font-mono:    'JetBrains Mono', 'SF Mono', monospace;
     }
 
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      font-family: var(--font-body);
       background: var(--bg);
       color: var(--text);
-      line-height: 1.6;
+      line-height: 1.65;
       -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow-x: hidden;
     }
 
-    a { color: var(--blue); text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    /* Grain overlay */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-repeat: repeat;
+      background-size: 200px;
+    }
+
+    a { color: var(--amber); text-decoration: none; transition: color 0.2s; }
+    a:hover { color: var(--gold); }
 
     .container {
-      max-width: 1080px;
+      max-width: 1120px;
       margin: 0 auto;
-      padding: 0 24px;
+      padding: 0 28px;
     }
 
-    /* Nav */
-    nav {
-      border-bottom: 1px solid var(--border);
-      padding: 16px 0;
+    /* ─── Scroll reveal ─── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(32px);
+      transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    nav .container {
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .reveal-d1 { transition-delay: 0.08s; }
+    .reveal-d2 { transition-delay: 0.16s; }
+    .reveal-d3 { transition-delay: 0.24s; }
+    .reveal-d4 { transition-delay: 0.32s; }
+    .reveal-d5 { transition-delay: 0.40s; }
+    .reveal-d6 { transition-delay: 0.48s; }
+
+    /* ─── Nav ─── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      padding: 0 28px;
+      background: rgba(17, 15, 13, 0.8);
+      backdrop-filter: blur(16px) saturate(1.4);
+      -webkit-backdrop-filter: blur(16px) saturate(1.4);
+      border-bottom: 1px solid rgba(46, 39, 35, 0.5);
+    }
+    nav .inner {
+      max-width: 1120px;
+      margin: 0 auto;
       display: flex;
       align-items: center;
       justify-content: space-between;
+      height: 64px;
     }
-    nav .logo {
-      font-size: 1.25rem;
+    .logo {
+      font-family: var(--font-mono);
+      font-size: 1.15rem;
       font-weight: 700;
       color: var(--text);
-      font-family: 'SF Mono', SFMono-Regular, ui-monospace, Menlo, monospace;
+      letter-spacing: -0.02em;
     }
-    nav .links { display: flex; gap: 24px; align-items: center; }
-    nav .links a { color: var(--text-dim); font-size: 0.9rem; }
-    nav .links a:hover { color: var(--text); text-decoration: none; }
-    .gh-btn {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: var(--bg-card); border: 1px solid var(--border);
-      padding: 6px 14px; border-radius: 6px; font-size: 0.85rem;
-      color: var(--text) !important;
+    .logo .dot { color: var(--amber); }
+    .nav-links { display: flex; gap: 28px; align-items: center; }
+    .nav-links a {
+      color: var(--text-dim);
+      font-size: 0.88rem;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      transition: color 0.2s;
     }
-    .gh-btn:hover { border-color: var(--text-dim); text-decoration: none !important; }
-    .gh-btn svg { width: 18px; height: 18px; fill: var(--text); }
+    .nav-links a:hover { color: var(--text); }
+    .nav-gh {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 7px 16px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-mid) !important;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .nav-gh:hover { border-color: var(--border-lt); color: var(--text) !important; }
+    .nav-gh svg { width: 16px; height: 16px; fill: currentColor; }
 
-    /* Hero */
+    /* ─── Hero ─── */
     .hero {
-      padding: 100px 0 80px;
+      padding: 160px 0 100px;
+      position: relative;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -40px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 600px;
+      background: radial-gradient(ellipse at center, rgba(232, 168, 73, 0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-inner {
       text-align: center;
+      position: relative;
     }
     .hero-badge {
-      display: inline-block;
-      padding: 4px 14px;
-      border: 1px solid var(--green-dim);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 18px;
+      border: 1px solid var(--border);
       border-radius: 999px;
-      font-size: 0.8rem;
-      color: var(--green);
-      margin-bottom: 24px;
-      font-family: 'SF Mono', SFMono-Regular, ui-monospace, Menlo, monospace;
-    }
-    .hero h1 {
-      font-size: clamp(2.5rem, 6vw, 4rem);
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      line-height: 1.1;
-      margin-bottom: 20px;
-    }
-    .hero h1 .accent { color: var(--green); }
-    .hero p {
-      font-size: 1.2rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 500;
       color: var(--text-dim);
-      max-width: 560px;
-      margin: 0 auto 40px;
+      margin-bottom: 36px;
+      background: var(--bg-card);
+    }
+    .hero-badge .v { color: var(--amber); }
+    .hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(3rem, 7vw, 5.5rem);
+      font-weight: 400;
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      margin-bottom: 24px;
+      color: var(--text);
+    }
+    .hero h1 em {
+      font-style: italic;
+      color: var(--amber);
+    }
+    .hero-sub {
+      font-size: 1.15rem;
+      color: var(--text-mid);
+      max-width: 480px;
+      margin: 0 auto 56px;
+      line-height: 1.7;
     }
 
-    /* Terminal */
+    /* ─── Terminal ─── */
+    .term-wrap {
+      max-width: 680px;
+      margin: 0 auto;
+      position: relative;
+    }
+    .term-wrap::before {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(232, 168, 73, 0.15), transparent 50%, rgba(126, 199, 123, 0.1));
+      z-index: -1;
+    }
+    .term-glow {
+      position: absolute;
+      bottom: -60px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 500px;
+      height: 120px;
+      background: radial-gradient(ellipse, rgba(232, 168, 73, 0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
     .terminal {
       background: var(--bg-code);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      max-width: 640px;
-      margin: 0 auto;
-      text-align: left;
+      border-radius: 14px;
       overflow: hidden;
+      box-shadow:
+        0 4px 6px rgba(0,0,0,0.15),
+        0 24px 48px rgba(0,0,0,0.3),
+        0 0 0 1px rgba(255,255,255,0.02) inset;
     }
-    .terminal-bar {
+    .term-bar {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 12px 16px;
-      background: var(--bg-card);
+      padding: 14px 18px;
+      background: linear-gradient(180deg, #1e1a17, #191513);
       border-bottom: 1px solid var(--border);
     }
-    .terminal-dot {
-      width: 12px; height: 12px; border-radius: 50%;
-    }
-    .terminal-dot.r { background: var(--red); }
-    .terminal-dot.y { background: var(--yellow); }
-    .terminal-dot.g { background: var(--green); }
-    .terminal-bar span {
-      flex: 1; text-align: center;
-      font-size: 0.8rem; color: var(--text-dim);
-      font-family: 'SF Mono', SFMono-Regular, ui-monospace, Menlo, monospace;
-    }
-    .terminal-body {
-      padding: 20px;
-      font-family: 'SF Mono', SFMono-Regular, ui-monospace, Menlo, monospace;
-      font-size: 0.85rem;
-      line-height: 1.7;
-    }
-    .terminal-body .prompt { color: var(--green); }
-    .terminal-body .cmd { color: var(--text); }
-    .terminal-body .flag { color: var(--cyan); }
-    .terminal-body .arg { color: var(--yellow); }
-    .terminal-body .out { color: var(--text-dim); }
-    .terminal-body .dim { color: #484f58; }
-
-    /* Install */
-    .install {
-      padding: 80px 0;
+    .term-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .term-dot-r { background: #e05252; }
+    .term-dot-y { background: #d4a54a; }
+    .term-dot-g { background: #6ab566; }
+    .term-bar-title {
+      flex: 1;
       text-align: center;
-    }
-    .install h2 {
-      font-size: 1.8rem;
-      margin-bottom: 12px;
-    }
-    .install p {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
       color: var(--text-dim);
-      margin-bottom: 36px;
+      letter-spacing: 0.03em;
+    }
+    .term-body {
+      padding: 22px 24px 26px;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      line-height: 1.85;
+      min-height: 280px;
+    }
+    .term-line { white-space: pre; }
+    .t-prompt { color: var(--green); }
+    .t-cmd { color: var(--text); font-weight: 500; }
+    .t-flag { color: var(--cyan); }
+    .t-arg { color: var(--amber); }
+    .t-out { color: var(--text-dim); }
+    .t-head { color: var(--text-mid); }
+    .t-rule { color: #3d3530; }
+    .t-title { color: var(--text); font-weight: 700; }
+    .t-check { color: var(--green); }
+    .t-uncheck { color: var(--text-dim); }
+
+    /* Typing cursor */
+    .cursor {
+      display: inline-block;
+      width: 8px;
+      height: 16px;
+      background: var(--amber);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: blink 1s step-end infinite;
+    }
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+    .typed-line { overflow: hidden; white-space: pre; }
+
+    /* ─── Install ─── */
+    .install {
+      padding: 120px 0;
+      position: relative;
+    }
+    .install::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border), transparent);
+    }
+    .install-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
+    }
+    .install-text h2 {
+      font-family: var(--font-display);
+      font-size: 2.8rem;
+      line-height: 1.1;
+      margin-bottom: 16px;
+      letter-spacing: -0.01em;
+    }
+    .install-text h2 em {
+      font-style: italic;
+      color: var(--amber);
+    }
+    .install-text p {
+      color: var(--text-mid);
+      font-size: 1.05rem;
+      line-height: 1.7;
+      max-width: 380px;
     }
     .install-box {
       background: var(--bg-code);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 24px 32px;
-      max-width: 520px;
-      margin: 0 auto;
-      text-align: left;
-      font-family: 'SF Mono', SFMono-Regular, ui-monospace, Menlo, monospace;
-      font-size: 0.9rem;
-      line-height: 2;
+      border-radius: 14px;
+      padding: 28px 32px;
       position: relative;
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      line-height: 2.2;
+      box-shadow: 0 16px 32px rgba(0,0,0,0.2);
     }
-    .install-box .prompt { color: var(--green); }
-    .install-box .cmd { color: var(--text); }
+    .install-box .t-comment {
+      color: var(--text-dim);
+      font-style: italic;
+    }
     .copy-btn {
       position: absolute;
-      top: 12px;
-      right: 12px;
+      top: 14px; right: 14px;
       background: var(--bg-card);
       border: 1px solid var(--border);
       color: var(--text-dim);
-      padding: 4px 10px;
+      padding: 5px 12px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 0.75rem;
-      font-family: inherit;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      transition: all 0.2s;
     }
-    .copy-btn:hover { color: var(--text); border-color: var(--text-dim); }
+    .copy-btn:hover { color: var(--text); border-color: var(--border-lt); background: var(--bg-warm); }
+    .copy-btn.copied { color: var(--green); border-color: var(--green); }
 
-    /* Features */
+    /* ─── Features ─── */
     .features {
-      padding: 80px 0;
+      padding: 120px 0;
+      position: relative;
     }
-    .features h2 {
-      text-align: center;
-      font-size: 1.8rem;
-      margin-bottom: 48px;
+    .features::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border), transparent);
     }
-    .features-grid {
+    .section-label {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--amber);
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 4vw, 2.8rem);
+      line-height: 1.15;
+      margin-bottom: 16px;
+      letter-spacing: -0.01em;
+    }
+    .section-sub {
+      color: var(--text-mid);
+      font-size: 1.05rem;
+      max-width: 520px;
+      line-height: 1.7;
+      margin-bottom: 56px;
+    }
+    .feat-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      grid-template-columns: repeat(3, 1fr);
       gap: 20px;
     }
-    .feature-card {
+    .feat-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 28px;
+      border-radius: 14px;
+      padding: 32px 28px;
+      transition: border-color 0.3s, transform 0.3s, box-shadow 0.3s;
+      position: relative;
+      overflow: hidden;
     }
-    .feature-card .icon {
+    .feat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--amber), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .feat-card:hover {
+      border-color: var(--border-lt);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 32px rgba(0,0,0,0.2);
+    }
+    .feat-card:hover::before { opacity: 1; }
+    .feat-icon {
+      width: 44px; height: 44px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      background: rgba(232, 168, 73, 0.08);
+      border: 1px solid rgba(232, 168, 73, 0.12);
+    }
+    .feat-icon svg { width: 22px; height: 22px; stroke: var(--amber); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .feat-card h3 {
+      font-family: var(--font-body);
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+    .feat-card p {
+      color: var(--text-mid);
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    /* ─── Commands ─── */
+    .commands {
+      padding: 120px 0;
+      position: relative;
+    }
+    .commands::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border), transparent);
+    }
+    .cmd-tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 28px;
+    }
+    .cmd-tab {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 8px 18px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .cmd-tab:hover { border-color: var(--border-lt); color: var(--text-mid); }
+    .cmd-tab.active {
+      background: var(--amber);
+      border-color: var(--amber);
+      color: var(--bg);
+    }
+    .cmd-panels { position: relative; min-height: 200px; }
+    .cmd-panel {
+      display: none;
+      animation: panelIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .cmd-panel.active { display: block; }
+    @keyframes panelIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .cmd-panel-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+    .cmd-desc h3 {
+      font-family: var(--font-display);
       font-size: 1.6rem;
       margin-bottom: 12px;
-      display: block;
-      width: 44px; height: 44px;
-      line-height: 44px;
-      text-align: center;
-      background: var(--bg-code);
-      border-radius: 8px;
     }
-    .feature-card h3 {
-      font-size: 1.05rem;
-      margin-bottom: 8px;
+    .cmd-desc p {
+      color: var(--text-mid);
+      font-size: 0.95rem;
+      line-height: 1.7;
+      margin-bottom: 16px;
     }
-    .feature-card p {
-      color: var(--text-dim);
-      font-size: 0.9rem;
+    .cmd-flags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
     }
-
-    /* Commands */
-    .commands {
-      padding: 80px 0;
+    .cmd-flag {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: rgba(110, 200, 200, 0.08);
+      border: 1px solid rgba(110, 200, 200, 0.15);
+      color: var(--cyan);
     }
-    .commands h2 {
-      text-align: center;
-      font-size: 1.8rem;
-      margin-bottom: 48px;
-    }
-    .cmd-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 16px;
-    }
-    .cmd-card {
+    .cmd-example {
       background: var(--bg-code);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 20px;
-      font-family: 'SF Mono', SFMono-Regular, ui-monospace, Menlo, monospace;
+      border-radius: 12px;
+      padding: 24px;
+      font-family: var(--font-mono);
       font-size: 0.82rem;
-      line-height: 1.7;
-    }
-    .cmd-card .label {
-      display: inline-block;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-      font-size: 0.75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--bg);
-      background: var(--green);
-      padding: 2px 8px;
-      border-radius: 4px;
-      margin-bottom: 12px;
+      line-height: 2;
     }
 
-    /* Requirements */
-    .requirements {
-      padding: 80px 0;
-      text-align: center;
+    /* ─── Architecture ─── */
+    .arch {
+      padding: 120px 0;
+      position: relative;
     }
-    .requirements h2 {
-      font-size: 1.8rem;
-      margin-bottom: 12px;
+    .arch::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border), transparent);
     }
-    .requirements > p {
-      color: var(--text-dim);
-      margin-bottom: 36px;
+    .arch-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
     }
-    .req-cards {
+    .arch-layers {
       display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .arch-layer {
+      padding: 16px 24px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      transition: border-color 0.3s, background 0.3s;
+    }
+    .arch-layer:hover {
+      border-color: var(--border-lt);
+      background: var(--bg-warm);
+    }
+    .arch-layer .num {
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      background: rgba(232, 168, 73, 0.1);
+      border: 1px solid rgba(232, 168, 73, 0.15);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700;
+      color: var(--amber);
+      font-size: 0.72rem;
+      flex-shrink: 0;
+    }
+    .arch-layer .lbl { color: var(--text); font-weight: 500; }
+    .arch-layer .desc { color: var(--text-dim); margin-left: auto; font-size: 0.75rem; }
+    .arch-arrow {
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.7rem;
+      padding: 2px 0;
+      opacity: 0.4;
+    }
+
+    /* ─── Requirements ─── */
+    .reqs {
+      padding: 120px 0;
+      position: relative;
+    }
+    .reqs::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border), transparent);
+    }
+    .req-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
       gap: 20px;
-      justify-content: center;
-      flex-wrap: wrap;
+      max-width: 700px;
+      margin: 0 auto;
     }
     .req-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 28px 36px;
-      min-width: 240px;
-    }
-    .req-card h3 { font-size: 1rem; margin-bottom: 6px; }
-    .req-card p { color: var(--text-dim); font-size: 0.9rem; }
-
-    /* Footer */
-    footer {
-      border-top: 1px solid var(--border);
-      padding: 40px 0;
+      border-radius: 14px;
+      padding: 32px;
       text-align: center;
+      transition: border-color 0.3s;
+    }
+    .req-card:hover { border-color: var(--border-lt); }
+    .req-card .req-icon {
+      width: 48px; height: 48px;
+      margin: 0 auto 18px;
+      border-radius: 12px;
+      background: rgba(232, 168, 73, 0.08);
+      border: 1px solid rgba(232, 168, 73, 0.12);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .req-card .req-icon svg { width: 24px; height: 24px; stroke: var(--amber); fill: none; stroke-width: 1.5; }
+    .req-card h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .req-card p {
+      color: var(--text-mid);
+      font-size: 0.88rem;
+      line-height: 1.6;
+    }
+
+    /* ─── Footer ─── */
+    footer {
+      padding: 48px 0;
+      border-top: 1px solid var(--border);
+    }
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .footer-left {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
       color: var(--text-dim);
+    }
+    .footer-left .logo-sm { color: var(--text-mid); font-weight: 700; }
+    .footer-right {
+      display: flex;
+      gap: 24px;
       font-size: 0.85rem;
     }
-    footer a { color: var(--text-dim); }
-    footer a:hover { color: var(--text); }
+    .footer-right a { color: var(--text-dim); }
+    .footer-right a:hover { color: var(--text); }
 
-    /* Responsive */
+    /* ─── Responsive ─── */
+    @media (max-width: 900px) {
+      .install-inner { grid-template-columns: 1fr; gap: 40px; }
+      .feat-grid { grid-template-columns: repeat(2, 1fr); }
+      .cmd-panel-inner { grid-template-columns: 1fr; }
+      .arch-inner { grid-template-columns: 1fr; gap: 40px; }
+      .req-grid { grid-template-columns: 1fr; max-width: 360px; }
+    }
     @media (max-width: 640px) {
-      .hero { padding: 60px 0 50px; }
-      .features, .commands, .install, .requirements { padding: 50px 0; }
-      .terminal-body { font-size: 0.75rem; padding: 14px; }
-      .cmd-grid { grid-template-columns: 1fr; }
-      .req-cards { flex-direction: column; align-items: center; }
-      nav .links { gap: 14px; }
+      .hero { padding: 120px 0 60px; }
+      .install, .features, .commands, .arch, .reqs { padding: 80px 0; }
+      .feat-grid { grid-template-columns: 1fr; }
+      .nav-links a:not(.nav-gh) { display: none; }
+      .footer-inner { flex-direction: column; gap: 16px; text-align: center; }
+      .term-body { padding: 16px 18px 20px; font-size: 0.75rem; }
     }
   </style>
 </head>
@@ -316,14 +675,14 @@
 
   <!-- Nav -->
   <nav>
-    <div class="container">
-      <div class="logo">corenote</div>
-      <div class="links">
+    <div class="inner">
+      <div class="logo">corenote<span class="dot">.</span></div>
+      <div class="nav-links">
         <a href="#install">Install</a>
         <a href="#features">Features</a>
         <a href="#commands">Commands</a>
-        <a href="https://github.com/AungMyoKyaw/corenote" class="gh-btn">
-          <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+        <a href="https://github.com/AungMyoKyaw/corenote" class="nav-gh">
+          <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
           GitHub
         </a>
       </div>
@@ -333,37 +692,24 @@
   <!-- Hero -->
   <section class="hero">
     <div class="container">
-      <div class="hero-badge">v0.1.0 &middot; Swift 6.0</div>
-      <h1>Apple Notes,<br>from your <span class="accent">terminal</span></h1>
-      <p>Read, create, edit, search, and organize your notes without leaving the command line. Fast, native, no sync required.</p>
-      <div class="terminal">
-        <div class="terminal-bar">
-          <div class="terminal-dot r"></div>
-          <div class="terminal-dot y"></div>
-          <div class="terminal-dot g"></div>
-          <span>Terminal</span>
-          <div style="width:36px"></div>
-        </div>
-        <div class="terminal-body">
-          <div><span class="prompt">$</span> <span class="cmd">corenote</span> <span class="cmd">list</span> <span class="flag">--folder</span> <span class="arg">Work</span> <span class="flag">--limit</span> <span class="arg">5</span></div>
-          <div class="out">&nbsp;</div>
-          <div class="out">  #   Title                    Modified         Folder</div>
-          <div class="dim">  ─── ──────────────────────── ──────────────── ──────</div>
-          <div class="out">  1   Sprint Planning Q2       2 hours ago      Work</div>
-          <div class="out">  2   API Design Notes         yesterday        Work</div>
-          <div class="out">  3   Meeting Notes 04/03      3 days ago       Work</div>
-          <div class="out">  4   Project Roadmap          1 week ago       Work</div>
-          <div class="out">  5   Onboarding Checklist     2 weeks ago      Work</div>
-          <div class="out">&nbsp;</div>
-          <div><span class="prompt">$</span> <span class="cmd">corenote</span> <span class="cmd">show</span> <span class="arg">"sprint planning"</span></div>
-          <div class="out">&nbsp;</div>
-          <div class="out">  <strong style="color:var(--text)">Sprint Planning Q2</strong></div>
-          <div class="out">  Work &middot; 2 hours ago</div>
-          <div class="out">&nbsp;</div>
-          <div class="out">  ## Goals</div>
-          <div class="out">  - [x] Finalize API endpoints</div>
-          <div class="out">  - [ ] Write integration tests</div>
-          <div class="out">  - [ ] Deploy to staging</div>
+      <div class="hero-inner">
+        <div class="hero-badge reveal"><span class="v">v0.1.0</span> &middot; Swift 6.0 &middot; macOS</div>
+        <h1 class="reveal reveal-d1">Apple Notes,<br>from your <em>terminal</em></h1>
+        <p class="hero-sub reveal reveal-d2">Read, create, edit, search, and organize your notes without leaving the command line. Fast, native, zero configuration.</p>
+        <div class="term-wrap reveal reveal-d3">
+          <div class="term-glow"></div>
+          <div class="terminal">
+            <div class="term-bar">
+              <div class="term-dot term-dot-r"></div>
+              <div class="term-dot term-dot-y"></div>
+              <div class="term-dot term-dot-g"></div>
+              <div class="term-bar-title">corenote</div>
+              <div style="width:36px"></div>
+            </div>
+            <div class="term-body" id="hero-term">
+              <!-- Filled by typing animation -->
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -372,12 +718,18 @@
   <!-- Install -->
   <section class="install" id="install">
     <div class="container">
-      <h2>Install in seconds</h2>
-      <p>Available via Homebrew. Requires macOS 15 (Sequoia) or later.</p>
-      <div class="install-box">
-        <button class="copy-btn" onclick="navigator.clipboard.writeText('brew tap AungMyoKyaw/tap\nbrew install corenote')">Copy</button>
-        <div><span class="prompt">$</span> <span class="cmd">brew tap AungMyoKyaw/tap</span></div>
-        <div><span class="prompt">$</span> <span class="cmd">brew install corenote</span></div>
+      <div class="install-inner">
+        <div class="install-text reveal">
+          <div class="section-label">Installation</div>
+          <h2>Two lines.<br>That's <em>it.</em></h2>
+          <p>Install via Homebrew on any Mac running Sequoia or later. Or build from source if you prefer.</p>
+        </div>
+        <div class="install-box reveal reveal-d1">
+          <button class="copy-btn" onclick="copyInstall(this)">Copy</button>
+          <div><span class="t-comment"># Install corenote</span></div>
+          <div><span class="t-prompt">$</span> <span class="t-cmd">brew tap AungMyoKyaw/tap</span></div>
+          <div><span class="t-prompt">$</span> <span class="t-cmd">brew install corenote</span></div>
+        </div>
       </div>
     </div>
   </section>
@@ -385,37 +737,51 @@
   <!-- Features -->
   <section class="features" id="features">
     <div class="container">
-      <h2>Built for the terminal</h2>
-      <div class="features-grid">
-        <div class="feature-card">
-          <span class="icon">R/W</span>
+      <div class="section-label reveal">Capabilities</div>
+      <div class="section-title reveal reveal-d1">Everything you need,<br>nothing you don't</div>
+      <div class="section-sub reveal reveal-d2">A focused tool that does one thing well &mdash; gives you full control of Apple Notes from your terminal.</div>
+      <div class="feat-grid">
+        <div class="feat-card reveal">
+          <div class="feat-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </div>
           <h3>Full CRUD</h3>
-          <p>List, show, create, edit, delete, and move notes. Everything you do in Notes.app, from the command line.</p>
+          <p>List, show, create, edit, delete, and move notes. Everything Notes.app does, from the command line.</p>
         </div>
-        <div class="feature-card">
-          <span class="icon">~/</span>
+        <div class="feat-card reveal reveal-d1">
+          <div class="feat-icon">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+          </div>
           <h3>Folder management</h3>
-          <p>Create, rename, delete, and nest folders. Organize your notes the way you want.</p>
+          <p>Create, rename, delete, and nest folders. Full organizational control, including nested hierarchies.</p>
         </div>
-        <div class="feature-card">
-          <span class="icon">~=</span>
+        <div class="feat-card reveal reveal-d2">
+          <div class="feat-icon">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          </div>
           <h3>Fuzzy matching</h3>
           <p>Find notes by approximate title. Four-level matching: exact, prefix, contains, and Levenshtein distance.</p>
         </div>
-        <div class="feature-card">
-          <span class="icon">md</span>
-          <h3>Markdown support</h3>
-          <p>Write in Markdown — corenote converts to and from Apple Notes' internal protobuf format transparently.</p>
+        <div class="feat-card reveal reveal-d3">
+          <div class="feat-icon">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h12"/></svg>
+          </div>
+          <h3>Markdown in, Markdown out</h3>
+          <p>Write in Markdown &mdash; corenote converts to and from Apple Notes' internal protobuf format transparently.</p>
         </div>
-        <div class="feature-card">
-          <span class="icon">vi</span>
+        <div class="feat-card reveal reveal-d4">
+          <div class="feat-icon">
+            <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          </div>
           <h3>$EDITOR integration</h3>
-          <p>Create and edit notes in your preferred editor. Works with vim, nvim, nano, or any $EDITOR.</p>
+          <p>Create and edit notes in your preferred editor. Works with vim, nvim, nano, or whatever you set.</p>
         </div>
-        <div class="feature-card">
-          <span class="icon">{}</span>
+        <div class="feat-card reveal reveal-d5">
+          <div class="feat-icon">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </div>
           <h3>JSON output</h3>
-          <p>Every query command supports <code style="color:var(--cyan)">--json</code> for structured output. Pipe to jq, scripts, or other tools.</p>
+          <p>Every query supports <code style="color:var(--cyan);font-family:var(--font-mono);font-size:0.85em">--json</code> for structured output. Pipe to jq, scripts, or automation.</p>
         </div>
       </div>
     </div>
@@ -424,66 +790,246 @@
   <!-- Commands -->
   <section class="commands" id="commands">
     <div class="container">
-      <h2>All the commands you need</h2>
-      <div class="cmd-grid">
-        <div class="cmd-card">
-          <div class="label">list</div>
-          <div><span class="prompt">$</span> corenote list</div>
-          <div><span class="prompt">$</span> corenote list <span class="flag">--folder</span> <span class="arg">Work</span></div>
-          <div><span class="prompt">$</span> corenote list <span class="flag">--sort</span> <span class="arg">title</span> <span class="flag">--json</span></div>
+      <div class="section-label reveal">Commands</div>
+      <div class="section-title reveal reveal-d1">Eight commands.<br>Zero complexity.</div>
+      <div class="section-sub reveal reveal-d2">Each command is designed to do exactly what you expect, with sensible defaults and powerful options when you need them.</div>
+
+      <div class="cmd-tabs reveal reveal-d3">
+        <button class="cmd-tab active" data-cmd="list">list</button>
+        <button class="cmd-tab" data-cmd="show">show</button>
+        <button class="cmd-tab" data-cmd="search">search</button>
+        <button class="cmd-tab" data-cmd="create">create</button>
+        <button class="cmd-tab" data-cmd="edit">edit</button>
+        <button class="cmd-tab" data-cmd="delete">delete</button>
+        <button class="cmd-tab" data-cmd="move">move</button>
+        <button class="cmd-tab" data-cmd="folder">folder</button>
+      </div>
+
+      <div class="cmd-panels reveal reveal-d4">
+        <!-- list -->
+        <div class="cmd-panel active" data-panel="list">
+          <div class="cmd-panel-inner">
+            <div class="cmd-desc">
+              <h3>List all notes</h3>
+              <p>Browse your notes with optional filtering by folder or account, custom sorting, and pagination. Perfect for getting an overview.</p>
+              <div class="cmd-flags">
+                <span class="cmd-flag">--folder</span>
+                <span class="cmd-flag">--account</span>
+                <span class="cmd-flag">--limit</span>
+                <span class="cmd-flag">--sort</span>
+                <span class="cmd-flag">--json</span>
+              </div>
+            </div>
+            <div class="cmd-example">
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote list</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote list</span> <span class="t-flag">--folder</span> <span class="t-arg">Work</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote list</span> <span class="t-flag">--sort</span> <span class="t-arg">title</span> <span class="t-flag">--json</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote list</span> <span class="t-flag">--limit</span> <span class="t-arg">10</span></div>
+            </div>
+          </div>
         </div>
-        <div class="cmd-card">
-          <div class="label">show</div>
-          <div><span class="prompt">$</span> corenote show <span class="arg">"meeting notes"</span></div>
-          <div><span class="prompt">$</span> corenote show <span class="arg">42</span> <span class="flag">--id</span></div>
-          <div><span class="prompt">$</span> corenote show <span class="arg">"my note"</span> <span class="flag">--raw</span></div>
+        <!-- show -->
+        <div class="cmd-panel" data-panel="show">
+          <div class="cmd-panel-inner">
+            <div class="cmd-desc">
+              <h3>Show a note</h3>
+              <p>Display a note's full content by fuzzy-matching its title. Use <code style="color:var(--cyan);font-family:var(--font-mono);font-size:0.85em">--raw</code> for plain text or <code style="color:var(--cyan);font-family:var(--font-mono);font-size:0.85em">--id</code> for direct lookup.</p>
+              <div class="cmd-flags">
+                <span class="cmd-flag">--id</span>
+                <span class="cmd-flag">--raw</span>
+                <span class="cmd-flag">--json</span>
+              </div>
+            </div>
+            <div class="cmd-example">
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote show</span> <span class="t-arg">"meeting notes"</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote show</span> <span class="t-arg">42</span> <span class="t-flag">--id</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote show</span> <span class="t-arg">"my note"</span> <span class="t-flag">--raw</span></div>
+            </div>
+          </div>
         </div>
-        <div class="cmd-card">
-          <div class="label">search</div>
-          <div><span class="prompt">$</span> corenote search <span class="arg">"deadline"</span></div>
-          <div><span class="prompt">$</span> corenote search <span class="arg">"TODO"</span> <span class="flag">--folder</span> <span class="arg">Work</span></div>
+        <!-- search -->
+        <div class="cmd-panel" data-panel="search">
+          <div class="cmd-panel-inner">
+            <div class="cmd-desc">
+              <h3>Search notes</h3>
+              <p>Full-text search across all note titles and content. Optionally scope to a specific folder.</p>
+              <div class="cmd-flags">
+                <span class="cmd-flag">--folder</span>
+                <span class="cmd-flag">--limit</span>
+                <span class="cmd-flag">--json</span>
+              </div>
+            </div>
+            <div class="cmd-example">
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote search</span> <span class="t-arg">"project deadline"</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote search</span> <span class="t-arg">"TODO"</span> <span class="t-flag">--folder</span> <span class="t-arg">Work</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote search</span> <span class="t-arg">"budget"</span> <span class="t-flag">--json</span></div>
+            </div>
+          </div>
         </div>
-        <div class="cmd-card">
-          <div class="label">create</div>
-          <div><span class="prompt">$</span> corenote create <span class="flag">--title</span> <span class="arg">"New Note"</span></div>
-          <div><span class="prompt">$</span> corenote create <span class="flag">--editor</span></div>
-          <div><span class="prompt">$</span> corenote create <span class="flag">--folder</span> <span class="arg">Ideas</span></div>
+        <!-- create -->
+        <div class="cmd-panel" data-panel="create">
+          <div class="cmd-panel-inner">
+            <div class="cmd-desc">
+              <h3>Create a note</h3>
+              <p>Create notes inline with a title and Markdown body, or open your <code style="color:var(--cyan);font-family:var(--font-mono);font-size:0.85em">$EDITOR</code> for a full editing experience.</p>
+              <div class="cmd-flags">
+                <span class="cmd-flag">--title</span>
+                <span class="cmd-flag">--body</span>
+                <span class="cmd-flag">--folder</span>
+                <span class="cmd-flag">--editor</span>
+              </div>
+            </div>
+            <div class="cmd-example">
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote create</span> <span class="t-flag">--title</span> <span class="t-arg">"Shopping List"</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote create</span> <span class="t-flag">--editor</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote create</span> <span class="t-flag">--folder</span> <span class="t-arg">Ideas</span> <span class="t-flag">--editor</span></div>
+            </div>
+          </div>
         </div>
-        <div class="cmd-card">
-          <div class="label">edit</div>
-          <div><span class="prompt">$</span> corenote edit <span class="arg">"shopping list"</span></div>
-          <div><span class="prompt">$</span> corenote edit <span class="arg">"note"</span> <span class="flag">--title</span> <span class="arg">"New"</span></div>
+        <!-- edit -->
+        <div class="cmd-panel" data-panel="edit">
+          <div class="cmd-panel-inner">
+            <div class="cmd-desc">
+              <h3>Edit a note</h3>
+              <p>Open any note in your editor by fuzzy title match. Or update the title and body inline without opening an editor.</p>
+              <div class="cmd-flags">
+                <span class="cmd-flag">--id</span>
+                <span class="cmd-flag">--title</span>
+                <span class="cmd-flag">--body</span>
+              </div>
+            </div>
+            <div class="cmd-example">
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote edit</span> <span class="t-arg">"shopping list"</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote edit</span> <span class="t-arg">"note"</span> <span class="t-flag">--title</span> <span class="t-arg">"New Title"</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote edit</span> <span class="t-arg">"note"</span> <span class="t-flag">--body</span> <span class="t-arg">"Updated."</span></div>
+            </div>
+          </div>
         </div>
-        <div class="cmd-card">
-          <div class="label">delete</div>
-          <div><span class="prompt">$</span> corenote delete <span class="arg">"old note"</span></div>
-          <div><span class="prompt">$</span> corenote delete <span class="arg">"note"</span> <span class="flag">--permanent</span></div>
+        <!-- delete -->
+        <div class="cmd-panel" data-panel="delete">
+          <div class="cmd-panel-inner">
+            <div class="cmd-desc">
+              <h3>Delete a note</h3>
+              <p>Soft-delete to Recently Deleted, or permanently remove with confirmation. Use <code style="color:var(--cyan);font-family:var(--font-mono);font-size:0.85em">--force</code> to skip the prompt.</p>
+              <div class="cmd-flags">
+                <span class="cmd-flag">--id</span>
+                <span class="cmd-flag">--permanent</span>
+                <span class="cmd-flag">--force</span>
+              </div>
+            </div>
+            <div class="cmd-example">
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote delete</span> <span class="t-arg">"old note"</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote delete</span> <span class="t-arg">"draft"</span> <span class="t-flag">--permanent</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote delete</span> <span class="t-arg">"tmp"</span> <span class="t-flag">--permanent</span> <span class="t-flag">--force</span></div>
+            </div>
+          </div>
         </div>
-        <div class="cmd-card">
-          <div class="label">move</div>
-          <div><span class="prompt">$</span> corenote move <span class="arg">"note"</span> <span class="flag">--to</span> <span class="arg">Archive</span></div>
+        <!-- move -->
+        <div class="cmd-panel" data-panel="move">
+          <div class="cmd-panel-inner">
+            <div class="cmd-desc">
+              <h3>Move a note</h3>
+              <p>Move a note to a different folder. Find the note by fuzzy title match or internal ID.</p>
+              <div class="cmd-flags">
+                <span class="cmd-flag">--to</span>
+                <span class="cmd-flag">--id</span>
+              </div>
+            </div>
+            <div class="cmd-example">
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote move</span> <span class="t-arg">"meeting notes"</span> <span class="t-flag">--to</span> <span class="t-arg">Archive</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote move</span> <span class="t-arg">42</span> <span class="t-flag">--id</span> <span class="t-flag">--to</span> <span class="t-arg">Work</span></div>
+            </div>
+          </div>
         </div>
-        <div class="cmd-card">
-          <div class="label">folder</div>
-          <div><span class="prompt">$</span> corenote folder list</div>
-          <div><span class="prompt">$</span> corenote folder create <span class="arg">"Projects"</span></div>
-          <div><span class="prompt">$</span> corenote folder rename <span class="arg">"Old"</span> <span class="flag">--name</span> <span class="arg">"New"</span></div>
+        <!-- folder -->
+        <div class="cmd-panel" data-panel="folder">
+          <div class="cmd-panel-inner">
+            <div class="cmd-desc">
+              <h3>Manage folders</h3>
+              <p>List, create, rename, and delete folders. Supports nested folder hierarchies with <code style="color:var(--cyan);font-family:var(--font-mono);font-size:0.85em">--parent</code>.</p>
+              <div class="cmd-flags">
+                <span class="cmd-flag">list</span>
+                <span class="cmd-flag">create</span>
+                <span class="cmd-flag">rename</span>
+                <span class="cmd-flag">delete</span>
+              </div>
+            </div>
+            <div class="cmd-example">
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote folder list</span> <span class="t-flag">--json</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote folder create</span> <span class="t-arg">"Projects"</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote folder create</span> <span class="t-arg">"Q2"</span> <span class="t-flag">--parent</span> <span class="t-arg">Projects</span></div>
+              <div><span class="t-prompt">$</span> <span class="t-cmd">corenote folder rename</span> <span class="t-arg">"Old"</span> <span class="t-flag">--name</span> <span class="t-arg">"New"</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture -->
+  <section class="arch">
+    <div class="container">
+      <div class="arch-inner">
+        <div>
+          <div class="section-label reveal">How it works</div>
+          <div class="section-title reveal reveal-d1">Direct database<br>access. No API.</div>
+          <div class="section-sub reveal reveal-d2">corenote reads and writes Apple Notes' SQLite database directly. Note bodies are compressed protobuf &mdash; corenote handles the decoding transparently.</div>
+        </div>
+        <div class="arch-layers reveal reveal-d3">
+          <div class="arch-layer">
+            <div class="num">1</div>
+            <span class="lbl">CLI Commands</span>
+            <span class="desc">swift-argument-parser</span>
+          </div>
+          <div class="arch-arrow">&darr;</div>
+          <div class="arch-layer">
+            <div class="num">2</div>
+            <span class="lbl">Output Formatter</span>
+            <span class="desc">ANSI / JSON</span>
+          </div>
+          <div class="arch-arrow">&darr;</div>
+          <div class="arch-layer">
+            <div class="num">3</div>
+            <span class="lbl">Core Services</span>
+            <span class="desc">fuzzy, editor, markdown</span>
+          </div>
+          <div class="arch-arrow">&darr;</div>
+          <div class="arch-layer">
+            <div class="num">4</div>
+            <span class="lbl">Database Layer</span>
+            <span class="desc">SQLite + protobuf</span>
+          </div>
+          <div class="arch-arrow">&darr;</div>
+          <div class="arch-layer" style="border-color: var(--border-lt); background: rgba(232,168,73,0.04);">
+            <div class="num">5</div>
+            <span class="lbl">NoteStore.sqlite</span>
+            <span class="desc">Apple Notes DB</span>
+          </div>
         </div>
       </div>
     </div>
   </section>
 
   <!-- Requirements -->
-  <section class="requirements">
+  <section class="reqs">
     <div class="container">
-      <h2>Requirements</h2>
-      <p>corenote accesses the Apple Notes database directly — no API, no sync.</p>
-      <div class="req-cards">
-        <div class="req-card">
+      <div style="text-align:center">
+        <div class="section-label reveal">Requirements</div>
+        <div class="section-title reveal reveal-d1">Before you start</div>
+        <div class="section-sub reveal reveal-d2" style="margin-left:auto;margin-right:auto">corenote accesses the Apple Notes database directly. Two things are needed.</div>
+      </div>
+      <div class="req-grid">
+        <div class="req-card reveal reveal-d3">
+          <div class="req-icon">
+            <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
           <h3>macOS 15+</h3>
-          <p>Sequoia or later required. Native Swift 6 binary.</p>
+          <p>Sequoia or later. Native Swift 6 binary, compiled for Apple silicon and Intel.</p>
         </div>
-        <div class="req-card">
+        <div class="req-card reveal reveal-d4">
+          <div class="req-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
           <h3>Full Disk Access</h3>
           <p>Grant your terminal Full Disk Access in System Settings &gt; Privacy &amp; Security.</p>
         </div>
@@ -494,10 +1040,152 @@
   <!-- Footer -->
   <footer>
     <div class="container">
-      <p>corenote is open source under the <a href="https://github.com/AungMyoKyaw/corenote/blob/master/LICENSE">MIT License</a>.</p>
-      <p style="margin-top:8px">Built by <a href="https://github.com/AungMyoKyaw">Aung Myo Kyaw</a></p>
+      <div class="footer-inner">
+        <div class="footer-left"><span class="logo-sm">corenote</span> &middot; MIT License</div>
+        <div class="footer-right">
+          <a href="https://github.com/AungMyoKyaw/corenote">GitHub</a>
+          <a href="https://github.com/AungMyoKyaw">Aung Myo Kyaw</a>
+        </div>
+      </div>
     </div>
   </footer>
+
+  <script>
+    /* ─── Scroll Reveal ─── */
+    const reveals = document.querySelectorAll('.reveal');
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+    reveals.forEach(el => obs.observe(el));
+
+    /* ─── Hero Terminal Typing ─── */
+    const termLines = [
+      { type: 'cmd', text: '$ corenote list --folder Work --limit 5' },
+      { type: 'blank' },
+      { type: 'out', text: '  #   Title                    Modified         Folder' },
+      { type: 'rule', text: '  \u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500\u2500' },
+      { type: 'out', text: '  1   Sprint Planning Q2       2 hours ago      Work' },
+      { type: 'out', text: '  2   API Design Notes         yesterday        Work' },
+      { type: 'out', text: '  3   Meeting Notes 04/03      3 days ago       Work' },
+      { type: 'out', text: '  4   Project Roadmap          1 week ago       Work' },
+      { type: 'out', text: '  5   Onboarding Checklist     2 weeks ago      Work' },
+      { type: 'blank' },
+      { type: 'cmd', text: '$ corenote show "sprint planning"' },
+      { type: 'blank' },
+      { type: 'title', text: '  Sprint Planning Q2' },
+      { type: 'out', text: '  Work \u00b7 2 hours ago' },
+      { type: 'blank' },
+      { type: 'out', text: '  ## Goals' },
+      { type: 'check', text: '  - [x] Finalize API endpoints' },
+      { type: 'uncheck', text: '  - [ ] Write integration tests' },
+      { type: 'uncheck', text: '  - [ ] Deploy to staging' },
+    ];
+
+    const heroTerm = document.getElementById('hero-term');
+    let lineIdx = 0;
+    let charIdx = 0;
+    let currentDiv = null;
+    let cursorEl = null;
+
+    function colorize(text) {
+      return text
+        .replace(/\$ /, '<span class="t-prompt">$</span> ')
+        .replace(/(corenote)/, '<span class="t-cmd">$1</span>')
+        .replace(/(list|show|search|create|edit|delete|move|folder)(?=\s|$)/, '<span class="t-cmd">$1</span>')
+        .replace(/(--\w+)/g, '<span class="t-flag">$1</span>')
+        .replace(/"([^"]+)"/g, '<span class="t-arg">"$1"</span>')
+        .replace(/\b(Work|5)\b(?!<)/g, '<span class="t-arg">$1</span>');
+    }
+
+    function typeNext() {
+      if (lineIdx >= termLines.length) {
+        if (cursorEl) { heroTerm.appendChild(cursorEl); }
+        return;
+      }
+
+      const line = termLines[lineIdx];
+
+      if (line.type === 'blank') {
+        const d = document.createElement('div');
+        d.innerHTML = '&nbsp;';
+        d.className = 'term-line';
+        heroTerm.appendChild(d);
+        lineIdx++;
+        setTimeout(typeNext, 80);
+        return;
+      }
+
+      if (line.type === 'cmd') {
+        if (!currentDiv) {
+          currentDiv = document.createElement('div');
+          currentDiv.className = 'term-line typed-line';
+          heroTerm.appendChild(currentDiv);
+          if (!cursorEl) {
+            cursorEl = document.createElement('span');
+            cursorEl.className = 'cursor';
+          }
+        }
+        if (charIdx < line.text.length) {
+          const partial = line.text.substring(0, charIdx + 1);
+          currentDiv.innerHTML = colorize(partial);
+          currentDiv.appendChild(cursorEl);
+          charIdx++;
+          const speed = 22 + Math.random() * 20;
+          setTimeout(typeNext, speed);
+        } else {
+          currentDiv.innerHTML = colorize(line.text);
+          if (cursorEl.parentNode) cursorEl.parentNode.removeChild(cursorEl);
+          currentDiv = null;
+          charIdx = 0;
+          lineIdx++;
+          setTimeout(typeNext, 350);
+        }
+        return;
+      }
+
+      // Instant lines
+      const d = document.createElement('div');
+      d.className = 'term-line';
+      const classMap = {
+        out: 't-out', rule: 't-rule', head: 't-head',
+        title: 't-title', check: 't-check', uncheck: 't-uncheck'
+      };
+      const cls = classMap[line.type] || 't-out';
+      d.innerHTML = `<span class="${cls}">${line.text}</span>`;
+      heroTerm.appendChild(d);
+      lineIdx++;
+      setTimeout(typeNext, 40);
+    }
+
+    // Start typing when hero terminal is in view
+    const termObs = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          setTimeout(typeNext, 600);
+          termObs.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.3 });
+    termObs.observe(document.querySelector('.term-wrap'));
+
+    /* ─── Command Tabs ─── */
+    document.querySelectorAll('.cmd-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.cmd-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.cmd-panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.querySelector(`.cmd-panel[data-panel="${tab.dataset.cmd}"]`).classList.add('active');
+      });
+    });
+
+    /* ─── Copy Button ─── */
+    function copyInstall(btn) {
+      navigator.clipboard.writeText('brew tap AungMyoKyaw/tap\nbrew install corenote');
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    }
+  </script>
 
 </body>
 </html>
